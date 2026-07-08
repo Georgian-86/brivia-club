@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: brivia-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: brivia
+      POSTGRES_PASSWORD: brivia
+      POSTGRES_DB: brivia
+    ports:
+      - '5433:5432'
+    volumes:
+      - brivia-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U brivia']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  brivia-pgdata:

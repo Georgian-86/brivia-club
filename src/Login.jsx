@@ -1,15 +1,37 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HERO_IMG from './assets/hero.png'
+import { api, setToken } from './app/api.js'
 
 export default function Login() {
   const navigate = useNavigate()
   const [mode, setMode] = useState('login') // 'login' | 'signup'
+  const [form, setForm] = useState({ name: '', email: '', password: '' })
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
 
-  const submit = (e) => {
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const submit = async (e) => {
     e.preventDefault()
-    // hook up real auth here — for now just go home
-    navigate('/')
+    setError(null)
+    setBusy(true)
+    try {
+      const path = mode === 'login' ? '/auth/login' : '/auth/register'
+      const { token } = await api(path, { method: 'POST', body: form })
+      setToken(token)
+      navigate(mode === 'signup' ? '/onboarding' : '/app')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const demo = () => {
+    setMode('login')
+    setForm({ name: '', email: 'mohit@brivia.club', password: 'brivia123' })
+    setError(null)
   }
 
   return (
@@ -60,8 +82,8 @@ export default function Login() {
             </button>
           </div>
 
-          <button className="oauth-btn" onClick={submit}>
-            <span className="g">G</span> Continue with Google
+          <button className="oauth-btn" onClick={demo}>
+            <span className="g">✦</span> Use the demo account
           </button>
 
           <div className="divider">
@@ -72,26 +94,42 @@ export default function Login() {
             {mode === 'signup' && (
               <label className="field">
                 <span>Full name</span>
-                <input type="text" placeholder="Aarav Mehta" required />
+                <input
+                  type="text"
+                  placeholder="Aarav Mehta"
+                  required
+                  value={form.name}
+                  onChange={set('name')}
+                />
               </label>
             )}
             <label className="field">
               <span>Email</span>
-              <input type="email" placeholder="you@email.com" required />
+              <input
+                type="email"
+                placeholder="you@email.com"
+                required
+                value={form.email}
+                onChange={set('email')}
+              />
             </label>
             <label className="field">
               <span>Password</span>
-              <input type="password" placeholder="••••••••" required />
+              <input
+                type="password"
+                placeholder="••••••••"
+                required
+                minLength={6}
+                value={form.password}
+                onChange={set('password')}
+              />
             </label>
 
-            {mode === 'login' && (
-              <a className="forgot" href="#">
-                Forgot password?
-              </a>
-            )}
+            {error && <p className="auth-error">{error}</p>}
 
-            <button className="auth-submit" type="submit">
-              {mode === 'login' ? 'Log in' : 'Create account'} <span className="spark">✦</span>
+            <button className="auth-submit" type="submit" disabled={busy}>
+              {busy ? 'One moment…' : mode === 'login' ? 'Log in' : 'Create account'}{' '}
+              <span className="spark">✦</span>
             </button>
           </form>
 

@@ -1,0 +1,338 @@
+// ============================================================
+// THE BRIVIA CLUB — data model
+// Postgres 16. The matching graph (users → swipes → matches →
+// messages → outcomes) is the asset; everything else hangs off it.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // runtime traffic goes through the pooler (Supabase Supavisor :6543 in prod);
+  // migrations need a direct session connection (:5432)
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  MEMBER
+  ADMIN
+}
+
+enum SwipeAction {
+  LIKE
+  PASS
+  SUPER
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum MessageKind {
+  TEXT
+  CODE
+}
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  password        String
+  role            Role     @default(MEMBER)
+  name            String
+  handle          String   @unique
+  headline        String?
+  bio             String?
+  roleTitle       String?
+  org             String?
+  campus          String?
+  location        String?
+  timezone        String   @default("IST")
+  avatar          String?
+  cover           String?
+  tag             String   @default("Startup") // primary intent shown on cards
+  skills          String[]
+  interests       String[]
+  languages       String[]
+  personality     String[]
+  industries      String[]
+  purposes        String[]
+  lookingFor      String?
+  availability    String?
+  workStyle       String?
+  openToWork      Boolean  @default(false)
+  openToCollab    Boolean  @default(true)
+  hasVideo        Boolean  @default(false)
+  online          Boolean  @default(false)
+  profileStrength Int      @default(35)
+  verified        Json     @default("{}") // {email,phone,github,linkedin,college,company}
+  badges          String[]
+  experience      Json     @default("[]")
+  education       Json     @default("[]")
+  achievements    String[]
+  certifications  String[]
+  startup         Json?
+  socials         Json?
+  createdAt       DateTime @default(now())
+
+  swipesGiven      Swipe[]             @relation("swiper")
+  swipesReceived   Swipe[]             @relation("target")
+  matchesA         Match[]             @relation("matchA")
+  matchesB         Match[]             @relation("matchB")
+  messages         Message[]
+  requestsSent     ConnectionRequest[] @relation("reqFrom")
+  requestsReceived ConnectionRequest[] @relation("reqTo")
+  invitations      Invitation[]        @relation("invTo")
+  invitationsSent  Invitation[]        @relation("invFrom")
+  memberships      CommunityMember[]
+  posts            Post[]
+  postLikes        PostLike[]
+  rsvps            Rsvp[]
+  projects         Project[]
+  applications     Application[]
+  jobApplications  JobApplication[]
+  saved            SavedItem[]
+  notifications    Notification[]      @relation("notifUser")
+  viewsReceived    ProfileView[]       @relation("viewTarget")
+  viewsGiven       ProfileView[]       @relation("viewer")
+}
+
+model Swipe {
+  id        String      @id @default(cuid())
+  swiper    User        @relation("swiper", fields: [swiperId], references: [id])
+  swiperId  String
+  target    User        @relation("target", fields: [targetId], references: [id])
+  targetId  String
+  action    SwipeAction
+  createdAt DateTime    @default(now())
+
+  @@unique([swiperId, targetId])
+  @@index([targetId, action])
+}
+
+model Match {
+  id        String    @id @default(cuid())
+  userA     User      @relation("matchA", fields: [userAId], references: [id])
+  userAId   String
+  userB     User      @relation("matchB", fields: [userBId], references: [id])
+  userBId   String
+  score     Int       @default(0)
+  why       String[]
+  lastSeenA DateTime  @default(now())
+  lastSeenB DateTime  @default(now())
+  createdAt DateTime  @default(now())
+  messages  Message[]
+
+  @@unique([userAId, userBId])
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  match     Match       @relation(fields: [matchId], references: [id])
+  matchId   String
+  sender    User        @relation(fields: [senderId], references: [id])
+  senderId  String
+  kind      MessageKind @default(TEXT)
+  body      String
+  createdAt DateTime    @default(now())
+
+  @@index([matchId, createdAt])
+}
+
+model ConnectionRequest {
+  id        String        @id @default(cuid())
+  from      User          @relation("reqFrom", fields: [fromId], references: [id])
+  fromId    String
+  to        User          @relation("reqTo", fields: [toId], references: [id])
+  toId      String
+  note      String?
+  status    RequestStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+
+  @@unique([fromId, toId])
+}
+
+model Invitation {
+  id        String        @id @default(cuid())
+  kind      String // Team | Project
+  from      User          @relation("invFrom", fields: [fromId], references: [id])
+  fromId    String
+  to        User          @relation("invTo", fields: [toId], references: [id])
+  toId      String
+  title     String
+  detail    String?
+  icon      String        @default("zap")
+  status    RequestStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+}
+
+model Community {
+  id       String            @id @default(cuid())
+  slug     String            @unique
+  name     String
+  blurb    String?
+  icon     String            @default("users")
+  banner   String?
+  trending Boolean           @default(false)
+  members  CommunityMember[]
+  posts    Post[]
+}
+
+model CommunityMember {
+  user        User      @relation(fields: [userId], references: [id])
+  userId      String
+  community   Community @relation(fields: [communityId], references: [id])
+  communityId String
+  joinedAt    DateTime  @default(now())
+
+  @@id([userId, communityId])
+}
+
+model Post {
+  id          String     @id @default(cuid())
+  community   Community  @relation(fields: [communityId], references: [id])
+  communityId String
+  author      User       @relation(fields: [authorId], references: [id])
+  authorId    String
+  kind        String     @default("Discussion")
+  title       String
+  body        String
+  replies     Int        @default(0)
+  likesBase   Int        @default(0)
+  createdAt   DateTime   @default(now())
+  likes       PostLike[]
+}
+
+model PostLike {
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+  post   Post   @relation(fields: [postId], references: [id])
+  postId String
+
+  @@id([userId, postId])
+}
+
+model Event {
+  id       String   @id @default(cuid())
+  slug     String   @unique
+  kind     String
+  name     String
+  date     String
+  location String
+  prize    String?
+  img      String?
+  blurb    String?
+  featured Boolean  @default(false)
+  going    Int      @default(0)
+  rsvps    Rsvp[]
+}
+
+model Rsvp {
+  user    User   @relation(fields: [userId], references: [id])
+  userId  String
+  event   Event  @relation(fields: [eventId], references: [id])
+  eventId String
+
+  @@id([userId, eventId])
+}
+
+model Project {
+  id           String        @id @default(cuid())
+  name         String
+  blurb        String?
+  banner       String?
+  owner        User          @relation(fields: [ownerId], references: [id])
+  ownerId      String
+  roles        String[]
+  stack        String[]
+  timeline     String?
+  difficulty   String        @default("Intermediate")
+  pay          String?
+  equity       String?
+  applicantsBase Int         @default(0)
+  createdAt    DateTime      @default(now())
+  applications Application[]
+}
+
+model Application {
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  project   Project  @relation(fields: [projectId], references: [id])
+  projectId String
+  createdAt DateTime @default(now())
+
+  @@id([userId, projectId])
+}
+
+model Job {
+  id           String           @id @default(cuid())
+  title        String
+  org          String
+  type         String
+  mode         String?
+  pay          String?
+  tags         String[]
+  hot          Boolean          @default(false)
+  applicantsBase Int            @default(0)
+  postedLabel  String           @default("new")
+  createdAt    DateTime         @default(now())
+  applications JobApplication[]
+}
+
+model JobApplication {
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  job       Job      @relation(fields: [jobId], references: [id])
+  jobId     String
+  createdAt DateTime @default(now())
+
+  @@id([userId, jobId])
+}
+
+model SavedItem {
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  itemType  String // person | project | job | event
+  refId     String
+  createdAt DateTime @default(now())
+
+  @@id([userId, itemType, refId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  user      User     @relation("notifUser", fields: [userId], references: [id])
+  userId    String
+  kind      String // match | message | invite | project | event | community | badge
+  text      String
+  actorId   String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model ProfileView {
+  id        String   @id @default(cuid())
+  viewer    User?    @relation("viewer", fields: [viewerId], references: [id])
+  viewerId  String?
+  target    User     @relation("viewTarget", fields: [targetId], references: [id])
+  targetId  String
+  createdAt DateTime @default(now())
+
+  @@index([targetId, createdAt])
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  target    String
+  reason    String
+  severity  String   @default("Medium")
+  status    String   @default("Open")
+  createdAt DateTime @default(now())
+}

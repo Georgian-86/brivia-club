@@ -26,3 +26,7 @@ dist-ssr
 .claude
 .claude/skills
 .claude/tools
+
+# secrets — never commit
+.env
+server/.env
