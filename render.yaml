@@ -5,7 +5,7 @@ services:
     name: brivia
     runtime: node
     region: singapore # closest Render region to India; move behind Cloudflare for CDN
-    plan: starter # free tier sleeps after idle — fine for testing, not for launch
+    plan: free # sleeps after ~15 min idle (30s cold start); upgrade to starter for launch
     buildCommand: npm ci && VITE_BASE=/ npm run build && cd server && npm ci && npx prisma migrate deploy
     startCommand: cd server && npm start
     healthCheckPath: /api/health
