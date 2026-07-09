@@ -22,6 +22,7 @@ import Premium from './app/pages/Premium.jsx'
 import Admin from './app/pages/Admin.jsx'
 import './styles.css'
 import './app/app.css'
+import './world/world.css' // journey overlay — must load after the base system
 
 /** Reset scroll when navigating between pages. */
 function ScrollToTop() {
