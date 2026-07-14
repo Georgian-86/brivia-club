@@ -1,8 +1,10 @@
 import { db } from '../db.js'
 import { requireAuth } from '../auth.js'
 import { getViewer, scoredPeople, deckFor } from '../services/people.js'
+import { semanticSearch } from '../engine/index.js'
 import { personCard } from '../serialize.js'
 import { computeStrength } from './auth.routes.js'
+import { answer } from '../services/assistant.js'
 
 /* Aggregate reads: home dashboard, smart search, hubs, analytics.
    Scale path: /home is the hottest read → cache per-user in Redis
@@ -57,7 +59,7 @@ export default async function metaRoutes(app) {
   app.get('/api/home', { preHandler: requireAuth }, async (req) => {
     const viewer = await getViewer(req.userId)
     const [deck, requests, invitations, communities, events, matches] = await Promise.all([
-      deckFor(viewer, 4),
+      deckFor(viewer, 4, 'home'),
       db.connectionRequest.findMany({ where: { toId: req.userId, status: 'PENDING' }, include: { from: true } }),
       db.invitation.findMany({ where: { toId: req.userId, status: 'PENDING' }, include: { from: true } }),
       db.community.findMany({ where: { trending: true }, include: { _count: { select: { members: true, posts: true } } } }),
@@ -88,22 +90,52 @@ export default async function metaRoutes(app) {
     }
   })
 
-  /* ---------- smart search ---------- */
+  /* ---------- smart search — semantic first, keywords as fallback ---------- */
   app.get('/api/search', { preHandler: requireAuth }, async (req) => {
     const viewer = await getViewer(req.userId)
     const q = (req.query.q || '').toLowerCase().trim()
-    let people = await scoredPeople(viewer, { limit: 60 })
-    if (q) {
-      const words = q.split(/\s+/).filter((w) => w.length > 2)
-      people = people
-        .map((p) => {
-          const hay = `${p.name} ${p.role} ${p.org} ${p.tag} ${p.bio} ${p.skills.join(' ')} ${p.location} ${p.lookingFor} ${p.communities.join(' ')}`.toLowerCase()
-          const hits = words.filter((w) => hay.includes(w.replace(/s$/, ''))).length
-          return { ...p, _hits: hits }
-        })
-        .filter((p) => p._hits > 0)
-        .sort((a, b) => b._hits - a._hits || b.match - a.match)
+    if (!q) return { results: await scoredPeople(viewer, { limit: 60 }) }
+
+    // exact people first: name/handle lookups shouldn't depend on embeddings
+    const named = await db.user.findMany({
+      where: {
+        id: { not: viewer.id },
+        role: 'MEMBER',
+        OR: [{ name: { contains: q, mode: 'insensitive' } }, { handle: { contains: q, mode: 'insensitive' } }],
+      },
+      select: { id: true },
+      take: 8,
+    })
+    const nameHits = named.length
+      ? await scoredPeople(viewer, { where: { id: { in: named.map((u) => u.id) } }, limit: 8 })
+      : []
+
+    // meaning search: "flutter dev into fintech who can design" → people
+    const semantic = await semanticSearch(viewer, q, { limit: 60 })
+    if (semantic) {
+      const seen = new Set(nameHits.map((p) => p.id))
+      const rest = semantic
+        .filter((it) => !seen.has(it.user.id))
+        .map((it) =>
+          personCard(it.user, {
+            match: it.score,
+            why: it.why,
+            communities: (it.user.memberships || []).map((m) => m.community.name),
+          })
+        )
+      return { results: [...nameHits, ...rest] }
     }
+
+    // embeddings offline → old keyword scan still works
+    const words = q.split(/\s+/).filter((w) => w.length > 2)
+    const people = (await scoredPeople(viewer, { limit: 60 }))
+      .map((p) => {
+        const hay = `${p.name} ${p.role} ${p.org} ${p.tag} ${p.bio} ${p.skills.join(' ')} ${p.location} ${p.lookingFor} ${p.communities.join(' ')}`.toLowerCase()
+        const hits = words.filter((w) => hay.includes(w.replace(/s$/, ''))).length
+        return { ...p, _hits: hits }
+      })
+      .filter((p) => p._hits > 0)
+      .sort((a, b) => b._hits - a._hits || b.match - a.match)
     return { results: people }
   })
 
@@ -184,51 +216,11 @@ export default async function metaRoutes(app) {
     }
   })
 
-  /* ---------- assistant ---------- */
+  /* ---------- assistant ----------
+     Provider-abstracted (services/assistant.js): FREE heuristic engine
+     by default; flips to Claude when ASSISTANT_PROVIDER=claude + a key. */
   app.post('/api/assistant', { preHandler: requireAuth }, async (req) => {
-    const q = (req.body?.q || '').toLowerCase()
     const viewer = await getViewer(req.userId)
-
-    // intent detection is keyword-based v0; swap for an LLM call behind
-    // this same endpoint without touching the client
-    const want = (kw) => kw.some((k) => q.includes(k))
-    let filter = null
-    let text = 'Here\'s who I\'d put in front of you first:'
-    let follow = null
-
-    if (want(['guitar', 'band', 'music', 'drum', 'sing', 'piano'])) {
-      filter = { tag: 'Music' }
-      text = 'Gig-ready musicians who fit your schedule and taste:'
-    } else if (want(['idea', 'what should i build'])) {
-      const skills = (viewer.skills || []).slice(0, 3).join(' + ')
-      return {
-        text: `From your profile (${skills}${viewer.interests?.length ? ' · ' + viewer.interests.slice(0, 2).join(', ') : ''}), three directions score highest on founder-fit:`,
-        people: [],
-        follow: '1) A copilot in the domain you already know — pairs with your current work. 2) Tooling for the community you\'re most active in. 3) The unsexy workflow everyone in your industry complains about. Want intros to domain experts for any of these?',
-      }
-    } else if (want(['team', 'hackathon', 'sih', 'teammate'])) {
-      filter = { tag: { in: ['Hackathon', 'Side Project'] } }
-      text = 'For your next hackathon, these builders have the highest skill-fit with you:'
-    } else if (want(['backend', 'frontend', 'developer', 'engineer', 'designer', 'design', 'ml', 'data'])) {
-      text = 'Based on your stack and timezone, these builders complement you best:'
-    } else if (!q) {
-      return { text: 'I can find you people, teams, projects or ideas. Try a quick prompt below — or describe who you need in plain words.', people: [], follow: null }
-    }
-
-    let people = await scoredPeople(viewer, { where: filter || {}, limit: 20 })
-    if (!filter) {
-      const words = q.split(/\s+/).filter((w) => w.length > 3)
-      const ranked = people.filter((p) =>
-        words.some((w) => `${p.role} ${p.skills.join(' ')} ${p.bio}`.toLowerCase().includes(w.replace(/s$/, '')))
-      )
-      if (ranked.length) people = ranked
-    }
-    people = people.slice(0, 2)
-    if (people.length) {
-      follow = `${people[0].name.split(' ')[0]} matches on ${people[0].why[0]?.toLowerCase() || 'multiple factors'}. Want me to draft an intro message?`
-    } else {
-      text = 'Nobody in the club matches that yet — it grows every day. Meanwhile, try broadening the ask.'
-    }
-    return { text, people, follow }
+    return answer(viewer, req.body?.q || '', req.body?.history || [])
   })
 }

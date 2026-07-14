@@ -25,7 +25,8 @@ async function main() {
   const tables = [
     'message', 'match', 'swipe', 'connectionRequest', 'invitation', 'postLike', 'post',
     'communityMember', 'community', 'rsvp', 'event', 'application', 'project',
-    'jobApplication', 'job', 'savedItem', 'notification', 'profileView', 'report', 'user',
+    'jobApplication', 'job', 'savedItem', 'notification', 'profileView', 'report',
+    'interaction', 'tasteProfile', 'user', // user cascades ProfileEmbedding
   ]
   for (const t of tables) await db[t].deleteMany()
 
@@ -209,6 +210,12 @@ async function main() {
 
   const counts = await Promise.all([db.user.count(), db.match.count(), db.message.count(), db.post.count()])
   console.log(`Seeded: ${counts[0]} users, ${counts[1]} matches, ${counts[2]} messages, ${counts[3]} posts`)
+
+  /* ---------- matching engine embeddings ---------- */
+  const { refreshUserEmbedding } = await import('../src/engine/index.js')
+  const everyone = await db.user.findMany()
+  for (const u of everyone) await refreshUserEmbedding(u)
+  console.log(`Embedded ${everyone.length} member profiles for the matching engine`)
 }
 
 main()

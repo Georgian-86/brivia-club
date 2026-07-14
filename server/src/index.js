@@ -5,12 +5,15 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import fastifyStatic from '@fastify/static'
 import { initRealtime } from './realtime.js'
+import { warmupEmbeddings } from './engine/index.js'
 import authRoutes from './routes/auth.routes.js'
 import deckRoutes from './routes/deck.routes.js'
 import chatRoutes from './routes/chat.routes.js'
 import socialRoutes from './routes/social.routes.js'
 import metaRoutes from './routes/meta.routes.js'
 import adminRoutes from './routes/admin.routes.js'
+import uploadRoutes from './routes/uploads.routes.js'
+import teamRoutes from './routes/teams.routes.js'
 
 /* Brivia API — modular monolith. Each route module is a future
    service boundary; the process is stateless (JWT + Postgres +
@@ -28,6 +31,8 @@ await app.register(chatRoutes)
 await app.register(socialRoutes)
 await app.register(metaRoutes)
 await app.register(adminRoutes)
+await app.register(uploadRoutes)
+await app.register(teamRoutes)
 
 // In prod the API serves the built SPA too — one origin, one deploy,
 // no CORS, and Socket.IO shares the port. CDN goes in front later.
@@ -54,3 +59,6 @@ initRealtime(app.server)
 const port = Number(process.env.PORT || 4200)
 await app.listen({ port, host: '0.0.0.0' })
 console.log(`⚡ Brivia API on :${port}`)
+
+// load the embedding model off the boot path — first search/signup stays fast
+warmupEmbeddings()

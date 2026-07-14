@@ -99,6 +99,57 @@ model User {
   notifications    Notification[]      @relation("notifUser")
   viewsReceived    ProfileView[]       @relation("viewTarget")
   viewsGiven       ProfileView[]       @relation("viewer")
+  teamsOwned       Team[]              @relation("teamOwner")
+  teamMemberships  TeamMember[]
+  embedding        ProfileEmbedding?
+  taste            TasteProfile?
+}
+
+// ============================================================
+// Matching engine v1 — semantic + learned layers
+// ============================================================
+
+// Two embeddings per member: profileVec = "who I am", intentVec =
+// "who I'm looking for". Matching is bidirectional: my intent vs
+// their profile AND their intent vs my profile. Vector columns are
+// raw-SQL managed (Prisma can't speak pgvector) via engine/store.js.
+model ProfileEmbedding {
+  userId     String                       @id
+  user       User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileVec Unsupported("vector(384)")?
+  intentVec  Unsupported("vector(384)")?
+  textHash   String                       @default("") // skip re-embeds when profile text is unchanged
+  provider   String                       @default("local-minilm")
+  updatedAt  DateTime                     @default(now())
+}
+
+// Append-only event log: deck_served | like | pass | super | match.
+// `features` stores the exact feature vector the engine scored with
+// at serve time — the training set for every future ranking model.
+model Interaction {
+  id        String   @id @default(cuid())
+  userId    String
+  targetId  String
+  event     String
+  context   String   @default("deck") // deck | search | hub | home | event
+  features  Json?
+  score     Int?
+  createdAt DateTime @default(now())
+
+  @@index([userId, targetId, createdAt])
+  @@index([event, createdAt])
+}
+
+// Per-member learned taste model: feature weights nudged by online
+// SGD on every like/pass, regularized toward the shared prior so a
+// handful of swipes can't send a deck sideways.
+model TasteProfile {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weights   Json
+  bias      Float    @default(0)
+  samples   Int      @default(0)
+  updatedAt DateTime @updatedAt
 }
 
 model Swipe {
@@ -190,6 +241,32 @@ model CommunityMember {
   joinedAt    DateTime  @default(now())
 
   @@id([userId, communityId])
+}
+
+// Team rooms — squads inside a hub (replaces the hardcoded HACKATHON_TEAMS array)
+model Team {
+  id        String       @id @default(cuid())
+  name      String
+  hub       String       @default("hackathon") // which hub tab it surfaces under
+  event     String?
+  looking   String[]
+  stack     String[]
+  spots     Int          @default(1)
+  owner     User         @relation("teamOwner", fields: [ownerId], references: [id])
+  ownerId   String
+  members   TeamMember[]
+  createdAt DateTime     @default(now())
+}
+
+model TeamMember {
+  user     User     @relation(fields: [userId], references: [id])
+  userId   String
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId   String
+  role     String?
+  joinedAt DateTime @default(now())
+
+  @@id([userId, teamId])
 }
 
 model Post {

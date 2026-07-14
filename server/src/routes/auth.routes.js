@@ -1,6 +1,11 @@
 import { db } from '../db.js'
 import { hashPassword, checkPassword, signToken, requireAuth } from '../auth.js'
 import { fullMe } from '../serialize.js'
+import { refreshUserEmbedding } from '../engine/index.js'
+
+// embeddings refresh off the request path — signup/edit must stay fast
+const reembed = (user) =>
+  refreshUserEmbedding(user).catch((err) => console.warn('[auth] embedding refresh failed:', err.message))
 
 const PROFILE_FIELDS = [
   'name', 'headline', 'bio', 'roleTitle', 'org', 'campus', 'location', 'timezone',
@@ -43,6 +48,7 @@ export default async function authRoutes(app) {
         verified: { email: true },
       },
     })
+    reembed(user)
     return { token: signToken(user), me: fullMe(user) }
   })
 
@@ -68,6 +74,7 @@ export default async function authRoutes(app) {
       where: { id: req.userId },
       data: { profileStrength: computeStrength(user) },
     })
+    reembed(user)
     return { me: fullMe(user) }
   })
 
