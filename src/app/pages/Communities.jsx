@@ -1,5 +1,5 @@
 import { useOutletContext } from 'react-router-dom'
-import { AppIcon, BlockHead, Loading, PageHead, VerifiedTick } from '../ui.jsx'
+import { AppIcon, BlockHead, SkeletonGrid, PageHead, VerifiedTick } from '../ui.jsx'
 import { api, useApi } from '../api.js'
 
 /* 🤝 Communities — joining feeds the matching engine */
@@ -14,7 +14,7 @@ export default function Communities() {
   const comms = useApi('/communities')
   const posts = useApi('/posts')
 
-  if (comms.loading || posts.loading) return <Loading label="Finding your scenes…" />
+  if (comms.loading || posts.loading) return <SkeletonGrid count={6} label="Finding your scenes…" />
 
   const toggle = async (c) => {
     const { joined } = await api(`/communities/${c.id}/toggle`, { method: 'POST' })

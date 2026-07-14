@@ -19,6 +19,21 @@ npm run dev                   # API on :4200 (frontend proxies /api + /socket.io
 **Demo login:** `mohit@brivia.club` / `brivia123` (admin).
 Every seeded member: `<handle>@brivia.club` / `brivia123` (e.g. `sara@`, `zoya@`).
 
+## AI Assistant (`/api/assistant`)
+
+Provider-abstracted in `src/services/assistant.js` — `answer(viewer, q, history)` always
+returns `{ text, people[], follow }`, so the client never changes.
+
+- **`heuristic` (default, FREE, no key):** a scored intent engine over the real matching
+  engine (`scoredPeople`) + the viewer's graph — handles find-a-role, who-viewed-me,
+  review-my-profile, what-to-build, music/hackathon/co-founder intents. Zero external calls.
+- **`claude` (optional, PAID):** set `ASSISTANT_PROVIDER=claude` **and** `ANTHROPIC_API_KEY`.
+  Uses `@anthropic-ai/sdk` (`npm i @anthropic-ai/sdk` in `server/`) with tool-use
+  (`claude-opus-4-8`) so the model answers from real data, not hallucinations. The Anthropic
+  API is **paid, usage-based — there is no free tier**; the code ships dormant and falls back
+  to the heuristic engine on any error. A free-tier LLM (e.g. Gemini) can slot into the same
+  `answer()` interface later.
+
 ## Architecture
 
 ```
@@ -43,7 +58,10 @@ That means N replicas behind a load balancer work today, with one addition:
 3. **Batch scoring** — nightly job precomputes `match_scores`; `/deck` becomes an
    indexed read. `pgvector` for skill/bio embeddings; `matching.js` becomes the re-ranker.
 4. **Extract services** — matching engine first (it's already a pure module), then chat.
-5. **Object storage (S3/R2)** — avatars, covers, video intros, resumes, voice notes.
+5. **Object storage** — ✅ live via **Supabase Storage** (`src/storage.js`, bucket `brivia-uploads`).
+   Client asks `POST /api/uploads/sign` for a signed URL, PUTs the file straight to Supabase, then
+   PATCHes the public URL onto its record. Needs `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` in `.env`
+   (service_role — server-only). Powers avatar / cover / resume uploads + project & team creation.
 
 ## Hardening before real users
 

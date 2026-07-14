@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { AppIcon, Loading, PageHead } from '../ui.jsx'
+import { AppIcon, SkeletonGrid, PageHead } from '../ui.jsx'
 import { api, useApi } from '../api.js'
 
 /* 📅 Events — RSVP re-ranks your deck around people going too */
@@ -12,7 +12,7 @@ export default function Events() {
   const [kind, setKind] = useState('All')
   const { data, loading, refresh } = useApi('/events')
 
-  if (loading || !data) return <Loading label="Checking the radar…" />
+  if (loading || !data) return <SkeletonGrid count={6} label="Checking the radar…" />
 
   const events = kind === 'All' ? data.events : data.events.filter((e) => e.kind === kind)
   const featured = events.filter((e) => e.featured)

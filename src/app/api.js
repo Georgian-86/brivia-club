@@ -33,6 +33,22 @@ export async function api(path, { method = 'GET', body } = {}) {
   return data
 }
 
+/**
+ * Upload a file to Supabase Storage via a server-signed URL.
+ * kind ∈ avatar|cover|resume|video|attachment|voice. Returns the public URL.
+ */
+export async function uploadFile(kind, file) {
+  const ext = (file.name?.split('.').pop() || '').toLowerCase()
+  const { uploadUrl, publicUrl } = await api('/uploads/sign', { method: 'POST', body: { kind, ext } })
+  const res = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'content-type': file.type || 'application/octet-stream', 'x-upsert': 'true' },
+    body: file,
+  })
+  if (!res.ok) throw new Error('Upload failed — try a smaller file')
+  return publicUrl
+}
+
 /** Declarative GET hook — { data, loading, error, refresh }. */
 export function useApi(path, deps = []) {
   const [state, setState] = useState({ data: null, loading: true, error: null })

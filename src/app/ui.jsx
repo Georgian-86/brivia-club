@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { BADGES, byId } from './appData.js'
 
@@ -208,6 +209,88 @@ export function Loading({ label = 'Dealing the cards…' }) {
   )
 }
 
+/* ---------- skeletons (branded shimmer while data loads) ---------- */
+export function Skeleton({ w = '100%', h = 14, r = 8, style }) {
+  return <span className="sk" style={{ width: w, height: h, borderRadius: r, ...style }} aria-hidden="true" />
+}
+
+export function SkeletonCard() {
+  return (
+    <div className="sk-card" aria-hidden="true">
+      <div className="sk-card-top">
+        <Skeleton w={46} h={46} r="50%" />
+        <Skeleton w={46} h={46} r="50%" />
+      </div>
+      <Skeleton w="60%" h={16} />
+      <Skeleton w="45%" h={11} />
+      <Skeleton w="100%" h={11} />
+      <Skeleton w="85%" h={11} />
+      <div className="sk-card-chips">
+        <Skeleton w={52} h={20} r={999} />
+        <Skeleton w={64} h={20} r={999} />
+        <Skeleton w={44} h={20} r={999} />
+      </div>
+    </div>
+  )
+}
+
+export function SkeletonGrid({ count = 6, cols = 'three', label = 'Loading…' }) {
+  return (
+    <div role="status" aria-label={label}>
+      <div className={`card-grid ${cols}`}>
+        {Array.from({ length: count }).map((_, i) => (
+          <SkeletonCard key={i} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ---------- button with built-in pending state ---------- */
+export function Button({ loading, disabled, className = 'btn', children, ...rest }) {
+  return (
+    <button className={className} disabled={disabled || loading} aria-busy={loading || undefined} {...rest}>
+      {loading && <span className="btn-spin" aria-hidden="true" />}
+      {children}
+    </button>
+  )
+}
+
+/* ---------- overlay — portals modal content to <body> so a transformed
+   page ancestor (the .pg entrance animation) can't break position:fixed ---------- */
+export function Overlay({ onClose, label, children }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose?.()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return createPortal(
+    <div className="confirm-scrim" role="presentation" aria-label={label} onClick={onClose}>
+      {children}
+    </div>,
+    document.body
+  )
+}
+
+/* ---------- confirm dialog (gate destructive actions) ---------- */
+export function ConfirmDialog({ open, title, body, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger, busy, onConfirm, onCancel }) {
+  if (!open) return null
+  return (
+    <Overlay onClose={onCancel} label={title}>
+      <div className="confirm-box" role="alertdialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <h3 className="confirm-title">{title}</h3>
+        {body && <p className="confirm-body">{body}</p>}
+        <div className="confirm-actions">
+          <button className="btn" onClick={onCancel} disabled={busy}>{cancelLabel}</button>
+          <Button className={`btn ${danger ? 'btn-danger' : 'btn-red'}`} loading={busy} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </Overlay>
+  )
+}
+
 /* ---------- toast (fire-and-forget confirmation) ---------- */
 export function Toast({ toast, clear }) {
   useEffect(() => {
@@ -216,8 +299,9 @@ export function Toast({ toast, clear }) {
     return () => clearTimeout(t)
   }, [toast, clear])
   if (!toast) return null
+  const isError = toast.error || toast.icon === 'x'
   return (
-    <div className="toast" role="status">
+    <div className={`toast${isError ? ' error' : ''}`} role={isError ? 'alert' : 'status'}>
       <AppIcon name={toast.icon || 'check'} size={15} />
       {toast.text}
     </div>

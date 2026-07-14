@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { AppIcon, BadgeChip, BlockHead, Loading } from '../ui.jsx'
-import { api, useApi } from '../api.js'
+import { AppIcon, BadgeChip, BlockHead, Button, Loading, Overlay } from '../ui.jsx'
+import { api, uploadFile, useApi } from '../api.js'
 
 /* 👤 AI Builder Profile — renders the signed-in user from the API.
    One profile powers every feature; edits re-score you in the engine. */
@@ -143,7 +143,8 @@ function Overview({ me, onRecordVideo }) {
   )
 }
 
-function Portfolio({ me, toast }) {
+function Portfolio({ me, toast, onUploadResume }) {
+  const resumeInput = useRef(null)
   const { data } = useApi('/projects')
   const mine = (data?.projects || []).filter((p) => p.applied || p.owner.id === me.id).slice(0, 3)
   const shown = mine.length ? mine : (data?.projects || []).slice(0, 3)
@@ -189,9 +190,29 @@ function Portfolio({ me, toast }) {
       <section className="panel">
         <BlockHead icon="doc" title="Resume & links" />
         <div className="link-rows">
-          <button className="link-row" onClick={() => toast('Resume upload ships with the storage service', 'doc')}>
-            <AppIcon name="doc" size={15} /> Upload resume <em>PDF, parsed by the engine</em>
-          </button>
+          <input
+            ref={resumeInput}
+            type="file"
+            accept=".pdf,.doc,.docx"
+            hidden
+            onChange={(e) => onUploadResume(e.target.files?.[0])}
+          />
+          {me.socials?.resume ? (
+            <a className="link-row" href={me.socials.resume} target="_blank" rel="noreferrer">
+              <AppIcon name="doc" size={15} /> View resume <em>Replace by uploading a new one</em>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ marginLeft: 'auto' }}
+                onClick={(ev) => { ev.preventDefault(); resumeInput.current?.click() }}
+              >
+                Replace
+              </button>
+            </a>
+          ) : (
+            <button className="link-row" onClick={() => resumeInput.current?.click()}>
+              <AppIcon name="doc" size={15} /> Upload resume <em>PDF, parsed by the engine</em>
+            </button>
+          )}
           {me.socials?.github && (
             <a className="link-row" href={`https://${me.socials.github}`} target="_blank" rel="noreferrer">
               <AppIcon name="git" size={15} /> {me.socials.github} <em>Proof of work</em>
@@ -255,9 +276,84 @@ function Verification({ me, onVerify }) {
   )
 }
 
+/* ---------- edit-profile modal (writes via the existing PATCH /users/me) ---------- */
+const TEXT_FIELDS = [
+  ['name', 'Full name'], ['headline', 'Headline'], ['roleTitle', 'Role'], ['org', 'Company / org'],
+  ['campus', 'Campus'], ['location', 'Location'], ['timezone', 'Timezone'],
+  ['availability', 'Availability'], ['workStyle', 'Work style'], ['lookingFor', 'Looking for'],
+]
+
+function EditProfileModal({ me, onClose, onSaved, toast }) {
+  const [form, setForm] = useState(() => {
+    const f = {}
+    TEXT_FIELDS.forEach(([k]) => (f[k] = me[k] || ''))
+    f.bio = me.bio || ''
+    f.skills = (me.skills || []).join(', ')
+    f.interests = (me.interests || []).join(', ')
+    return f
+  })
+  const [busy, setBusy] = useState(false)
+  const set = (k) => (e) => setForm((s) => ({ ...s, [k]: e.target.value }))
+  const csv = (v) => v.split(',').map((x) => x.trim()).filter(Boolean)
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const body = { bio: form.bio, skills: csv(form.skills), interests: csv(form.interests) }
+      TEXT_FIELDS.forEach(([k]) => (body[k] = form[k]))
+      const { me: updated } = await api('/users/me', { method: 'PATCH', body })
+      onSaved(updated)
+      toast('Profile saved — the engine re-scored you', 'check')
+      onClose()
+    } catch (e) {
+      toast(e.message, 'x')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Overlay onClose={onClose} label="Edit profile">
+      <div className="pe-box" role="dialog" aria-modal="true" aria-label="Edit profile" onClick={(e) => e.stopPropagation()}>
+        <div className="pe-head">
+          <h3>Edit profile</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close"><AppIcon name="x" size={15} /></button>
+        </div>
+        <div className="pe-grid">
+          {TEXT_FIELDS.map(([k, label]) => (
+            <div className="pe-field" key={k}>
+              <label htmlFor={`pe-${k}`}>{label}</label>
+              <input id={`pe-${k}`} value={form[k]} onChange={set(k)} />
+            </div>
+          ))}
+          <div className="pe-field full">
+            <label htmlFor="pe-bio">Bio</label>
+            <textarea id="pe-bio" value={form.bio} onChange={set('bio')} placeholder="One line on what you're building" />
+          </div>
+          <div className="pe-field full">
+            <label htmlFor="pe-skills">Skills (comma-separated)</label>
+            <input id="pe-skills" value={form.skills} onChange={set('skills')} placeholder="React, Node, LLMs" />
+          </div>
+          <div className="pe-field full">
+            <label htmlFor="pe-interests">Interests (comma-separated)</label>
+            <input id="pe-interests" value={form.interests} onChange={set('interests')} placeholder="AI, Music, Climate" />
+          </div>
+        </div>
+        <div className="pe-actions">
+          <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <Button className="btn btn-red" loading={busy} onClick={save}>Save changes</Button>
+        </div>
+      </div>
+    </Overlay>
+  )
+}
+
 export default function Profile() {
   const { me, setMe, toast } = useOutletContext()
   const [tab, setTab] = useState('overview')
+  const [editing, setEditing] = useState(false)
+  const avatarInput = useRef(null)
+  const coverInput = useRef(null)
 
   if (!me) return <Loading label="Loading your profile…" />
 
@@ -265,6 +361,33 @@ export default function Profile() {
     const { me: updated } = await api('/users/me', { method: 'PATCH', body: { hasVideo: true } })
     setMe(updated)
     toast('Video intro saved — profile strength updated', 'video')
+  }
+
+  // upload a file to storage, then PATCH the returned URL onto the profile
+  const uploadTo = async (kind, file, patchKey) => {
+    if (!file) return
+    toast('Uploading…', 'clock')
+    try {
+      const url = await uploadFile(kind, file)
+      const { me: updated } = await api('/users/me', { method: 'PATCH', body: { [patchKey]: url } })
+      setMe(updated)
+      toast(`${kind[0].toUpperCase()}${kind.slice(1)} updated`, 'check')
+    } catch (e) {
+      toast(e.message, 'x')
+    }
+  }
+
+  const uploadResume = async (file) => {
+    if (!file) return
+    toast('Uploading resume…', 'clock')
+    try {
+      const url = await uploadFile('resume', file)
+      const { me: updated } = await api('/users/me', { method: 'PATCH', body: { socials: { ...(me.socials || {}), resume: url } } })
+      setMe(updated)
+      toast('Resume uploaded', 'doc')
+    } catch (e) {
+      toast(e.message, 'x')
+    }
   }
 
   const verify = async (key, label) => {
@@ -281,12 +404,31 @@ export default function Profile() {
         className="prof-cover"
         style={{ backgroundImage: me.cover ? `url(${me.cover})` : 'linear-gradient(120deg, #1a0509, #08080a)' }}
       >
-        <button className="btn btn-ghost btn-sm prof-cover-edit" onClick={() => toast('Cover upload ships with the storage service', 'camera')}>
+        <input
+          ref={coverInput}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => uploadTo('cover', e.target.files?.[0], 'cover')}
+        />
+        <button className="btn btn-ghost btn-sm prof-cover-edit" onClick={() => coverInput.current?.click()}>
           <AppIcon name="camera" size={13} /> Change cover
         </button>
       </section>
       <section className="prof-id">
-        <img className="prof-ava" src={me.avatar} alt="" />
+        <span className="prof-ava-wrap">
+          <img className="prof-ava" src={me.avatar} alt="" />
+          <input
+            ref={avatarInput}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => uploadTo('avatar', e.target.files?.[0], 'avatar')}
+          />
+          <button className="prof-ava-edit" onClick={() => avatarInput.current?.click()} aria-label="Change photo" title="Change photo">
+            <AppIcon name="camera" size={13} />
+          </button>
+        </span>
         <div className="prof-id-main">
           <h1>
             {me.name}
@@ -305,7 +447,7 @@ export default function Profile() {
           </div>
         </div>
         <div className="prof-id-actions">
-          <button className="btn btn-red" onClick={() => toast('Full profile editor ships next sprint — fields save via the same PATCH', 'gear')}>
+          <button className="btn btn-red" onClick={() => setEditing(true)}>
             <AppIcon name="gear" size={14} /> Edit profile
           </button>
           <span className="prof-onboard-note">
@@ -313,6 +455,10 @@ export default function Profile() {
           </span>
         </div>
       </section>
+
+      {editing && (
+        <EditProfileModal me={me} toast={toast} onClose={() => setEditing(false)} onSaved={setMe} />
+      )}
 
       <div className="tab-row prof-tabs">
         {[
@@ -327,7 +473,7 @@ export default function Profile() {
       </div>
 
       {tab === 'overview' && <Overview me={me} onRecordVideo={recordVideo} />}
-      {tab === 'portfolio' && <Portfolio me={me} toast={toast} />}
+      {tab === 'portfolio' && <Portfolio me={me} toast={toast} onUploadResume={uploadResume} />}
       {tab === 'verify' && <Verification me={me} onVerify={verify} />}
     </div>
   )

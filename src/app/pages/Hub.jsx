@@ -1,15 +1,75 @@
 import { useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
-import { AppIcon, BlockHead, Loading, PersonCard, VerifiedTick } from '../ui.jsx'
+import { AppIcon, BlockHead, Button, Loading, Overlay, PersonCard, VerifiedTick } from '../ui.jsx'
 import { api, useApi } from '../api.js'
 
 /* 🚀🎸💻🎨 Hubs — one editorial framework, four dedicated matching
-   pools. Config + people + teams all come from /api/hubs/:id. */
+   pools. Config + people come from /api/hubs/:id; teams are live. */
+
+function NewTeamModal({ onClose, onCreated, toast }) {
+  const [form, setForm] = useState({ name: '', event: '', looking: '', stack: '', spots: 3 })
+  const [busy, setBusy] = useState(false)
+  const set = (k) => (e) => setForm((s) => ({ ...s, [k]: e.target.value }))
+  const submit = async () => {
+    if (!form.name.trim()) return toast('Give your team a name', 'x')
+    setBusy(true)
+    try {
+      const { team } = await api('/teams', { method: 'POST', body: { ...form, hub: 'hackathon' } })
+      toast(`Team ${team.name} created — you're the founder`, 'zap')
+      onCreated()
+      onClose()
+    } catch (e) {
+      toast(e.message, 'x')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Overlay onClose={onClose} label="Create a team">
+      <div className="pe-box" role="dialog" aria-modal="true" aria-label="Create a team" onClick={(e) => e.stopPropagation()}>
+        <div className="pe-head">
+          <h3>Create a team</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close"><AppIcon name="x" size={15} /></button>
+        </div>
+        <div className="pe-grid">
+          <div className="pe-field full"><label htmlFor="nt-name">Team name</label><input id="nt-name" value={form.name} onChange={set('name')} placeholder="AgriSense" /></div>
+          <div className="pe-field full"><label htmlFor="nt-event">Event</label><input id="nt-event" value={form.event} onChange={set('event')} placeholder="Smart India Hackathon" /></div>
+          <div className="pe-field"><label htmlFor="nt-looking">Roles needed (comma-separated)</label><input id="nt-looking" value={form.looking} onChange={set('looking')} placeholder="Designer, ML" /></div>
+          <div className="pe-field"><label htmlFor="nt-stack">Stack (comma-separated)</label><input id="nt-stack" value={form.stack} onChange={set('stack')} placeholder="React, FastAPI" /></div>
+          <div className="pe-field"><label htmlFor="nt-spots">Team size</label><input id="nt-spots" type="number" min="1" max="12" value={form.spots} onChange={set('spots')} /></div>
+        </div>
+        <div className="pe-actions">
+          <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <Button className="btn btn-red" loading={busy} onClick={submit}>Create team</Button>
+        </div>
+      </div>
+    </Overlay>
+  )
+}
 
 function HackathonExtras({ hub, toast }) {
   const [tab, setTab] = useState('teams')
+  const [creating, setCreating] = useState(false)
+  const [joining, setJoining] = useState(null)
+  const { data, refresh } = useApi('/teams?hub=hackathon')
+  const teams = data?.teams || []
+
+  const join = async (t) => {
+    setJoining(t.id)
+    try {
+      await api(`/teams/${t.id}/join`, { method: 'POST' })
+      toast(`You joined ${t.name}`, 'users')
+      refresh()
+    } catch (e) {
+      toast(e.message, 'x')
+    } finally {
+      setJoining(null)
+    }
+  }
+
   return (
     <section className="panel">
+      {creating && <NewTeamModal toast={toast} onClose={() => setCreating(false)} onCreated={refresh} />}
       <div className="tab-row">
         <button className={`pill${tab === 'teams' ? ' active' : ''}`} onClick={() => setTab('teams')}>
           Open teams
@@ -24,7 +84,8 @@ function HackathonExtras({ hub, toast }) {
 
       {tab === 'teams' && (
         <div className="team-list">
-          {hub.teams.map((t) => (
+          {teams.length === 0 && <p className="empty-note">No open teams yet — be the first to create one.</p>}
+          {teams.map((t) => (
             <div className="team-row" key={t.id}>
               <div className="team-body">
                 <strong>{t.name}</strong>
@@ -38,22 +99,31 @@ function HackathonExtras({ hub, toast }) {
               <div className="team-mid">
                 <div className="avatars">
                   {t.members.map((m) => (
-                    <img key={m.name} src={m.img} alt={m.name} title={m.name} />
+                    <img key={m.id} src={m.img} alt={m.name} title={m.name} />
                   ))}
                 </div>
                 <span className="team-needs">
-                  Needs: {t.looking.join(', ')} · {t.spots} spot{t.spots > 1 ? 's' : ''}
+                  {t.looking.length ? `Needs: ${t.looking.join(', ')} · ` : ''}
+                  {t.spots} spot{t.spots === 1 ? '' : 's'} left
                 </span>
               </div>
-              <button
-                className="btn btn-red btn-sm"
-                onClick={() => toast(`Request sent to join ${t.name}`, 'users')}
-              >
-                Ask to join
-              </button>
+              {t.isMember ? (
+                <button className="btn btn-ghost btn-sm" disabled>
+                  <AppIcon name="check" size={13} /> {t.isOwner ? 'Founder' : 'Joined'}
+                </button>
+              ) : (
+                <Button
+                  className="btn btn-red btn-sm"
+                  loading={joining === t.id}
+                  disabled={t.spots === 0}
+                  onClick={() => join(t)}
+                >
+                  {t.spots === 0 ? 'Full' : 'Ask to join'}
+                </Button>
+              )}
             </div>
           ))}
-          <button className="btn btn-ghost btn-block" onClick={() => toast('Team creation ships with team rooms (Phase 0 #4)', 'zap')}>
+          <button className="btn btn-ghost btn-block" onClick={() => setCreating(true)}>
             <AppIcon name="plus" size={14} /> Create a team
           </button>
         </div>

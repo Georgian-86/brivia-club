@@ -32,7 +32,9 @@ export default function Assistant() {
     setDraft('')
     setThinking(true)
     try {
-      const r = await api('/assistant', { method: 'POST', body: { q } })
+      // send recent turns as context (used by the Claude provider; ignored by the free engine)
+      const hist = thread.filter((m) => m.text).slice(-6).map((m) => ({ role: m.role, text: m.text }))
+      const r = await api('/assistant', { method: 'POST', body: { q, history: hist } })
       setThread((t) => [...t, { role: 'ai', ...r }])
     } catch (e) {
       setThread((t) => [...t, { role: 'ai', text: e.message, people: [], follow: null }])
@@ -128,8 +130,8 @@ export default function Assistant() {
             placeholder='"I need a designer who gets healthcare"…'
             aria-label="Ask the AI assistant"
           />
-          <button type="submit" className="btn btn-red btn-sm msg-send">
-            <AppIcon name="send" size={15} /> Ask
+          <button type="submit" className="btn btn-red btn-sm msg-send" disabled={thinking} aria-busy={thinking || undefined}>
+            {thinking ? <span className="btn-spin" aria-hidden="true" /> : <AppIcon name="send" size={15} />} Ask
           </button>
         </form>
       </div>

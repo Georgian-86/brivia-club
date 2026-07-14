@@ -114,6 +114,34 @@ export default async function socialRoutes(app) {
     }
   })
 
+  app.post('/api/projects', { preHandler: requireAuth }, async (req, reply) => {
+    const b = req.body || {}
+    if (!`${b.name || ''}`.trim()) return reply.code(400).send({ error: 'A project name is required' })
+    const arr = (v) => (Array.isArray(v) ? v : `${v || ''}`.split(',').map((s) => s.trim()).filter(Boolean))
+    const p = await db.project.create({
+      data: {
+        name: `${b.name}`.trim(),
+        blurb: b.blurb || null,
+        banner: b.banner || null,
+        roles: arr(b.roles),
+        stack: arr(b.stack),
+        timeline: b.timeline || null,
+        difficulty: b.difficulty || 'Intermediate',
+        pay: b.pay || null,
+        equity: b.equity || null,
+        ownerId: req.userId,
+      },
+      include: { owner: true, _count: { select: { applications: true } } },
+    })
+    return {
+      project: {
+        id: p.id, name: p.name, blurb: p.blurb, banner: p.banner, roles: p.roles, stack: p.stack,
+        timeline: p.timeline, difficulty: p.difficulty, pay: p.pay, equity: p.equity,
+        owner: personCard(p.owner), applicants: p.applicantsBase + p._count.applications, applied: false,
+      },
+    }
+  })
+
   app.post('/api/projects/:id/apply', { preHandler: requireAuth }, async (req) => {
     await db.application.upsert({
       where: { userId_projectId: { userId: req.userId, projectId: req.params.id } },
