@@ -3,6 +3,9 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import App from './App.jsx'
 import Login from './Login.jsx'
+import AuthCallback from './AuthCallback.jsx'
+import VerifyEmail from './VerifyEmail.jsx'
+import ResetPassword from './ResetPassword.jsx'
 import AppShell from './app/AppShell.jsx'
 import Onboarding from './app/pages/Onboarding.jsx'
 import Home from './app/pages/Home.jsx'
@@ -22,7 +25,6 @@ import Premium from './app/pages/Premium.jsx'
 import Admin from './app/pages/Admin.jsx'
 import './styles.css'
 import './app/app.css'
-import './world/world.css' // journey overlay — must load after the base system
 
 /** Reset scroll when navigating between pages. */
 function ScrollToTop() {
@@ -41,6 +43,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/app" element={<AppShell />}>
           <Route index element={<Home />} />

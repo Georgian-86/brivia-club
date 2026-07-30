@@ -4,9 +4,13 @@ import { fileURLToPath } from 'node:url'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import fastifyStatic from '@fastify/static'
+import helmet from '@fastify/helmet'
+import rateLimit from '@fastify/rate-limit'
+import { corsOrigin } from './config.js'
 import { initRealtime } from './realtime.js'
 import { warmupEmbeddings } from './engine/index.js'
 import authRoutes from './routes/auth.routes.js'
+import oauthRoutes from './routes/oauth.routes.js'
 import deckRoutes from './routes/deck.routes.js'
 import chatRoutes from './routes/chat.routes.js'
 import socialRoutes from './routes/social.routes.js'
@@ -19,13 +23,19 @@ import teamRoutes from './routes/teams.routes.js'
    service boundary; the process is stateless (JWT + Postgres +
    Socket.IO), so it scales horizontally behind a load balancer. */
 
-const app = Fastify({ logger: { level: 'warn' } })
+// trustProxy: Render/Vercel sit behind a proxy — rate limits must
+// key on the real client IP, not the load balancer's.
+const app = Fastify({ logger: { level: 'warn' }, trustProxy: true })
 
-await app.register(cors, { origin: true })
+await app.register(helmet, { contentSecurityPolicy: false, crossOriginEmbedderPolicy: false })
+await app.register(cors, { origin: corsOrigin })
+// global ceiling; auth routes declare tighter per-route budgets
+await app.register(rateLimit, { max: 300, timeWindow: '1 minute' })
 
 app.get('/api/health', async () => ({ ok: true, service: 'brivia-api' }))
 
 await app.register(authRoutes)
+await app.register(oauthRoutes)
 await app.register(deckRoutes)
 await app.register(chatRoutes)
 await app.register(socialRoutes)

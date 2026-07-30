@@ -1640,6 +1640,11 @@ a {
   color: var(--red-bright);
   font-size: 13px;
   margin: -4px 0 18px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--sans);
+  cursor: pointer;
 }
 .forgot:hover {
   text-decoration: underline;
@@ -1964,4 +1969,70 @@ a {
     opacity: 1;
     transform: none;
   }
+}
+
+/* ============ auth status pages (verify email / reset / oauth) ============ */
+.status-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(60% 50% at 50% -10%, rgba(200, 16, 46, 0.14), transparent 70%),
+    var(--bg);
+}
+.status-card {
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 42px 34px;
+}
+.status-badge {
+  width: 52px;
+  height: 52px;
+  margin: 26px auto 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 22px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.status-badge.ok {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 26px var(--red-glow);
+}
+.status-title {
+  font-family: var(--serif);
+  font-size: 26px;
+  margin: 0 0 10px;
+}
+.status-text {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 14px 0 0;
+}
+.status-cta {
+  display: inline-block;
+  width: auto;
+  margin-top: 26px;
+  padding: 13px 30px;
+  text-decoration: none;
+}
+.status-form {
+  text-align: left;
+  margin-top: 24px;
+}
+
+.auth-note {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+  margin: 14px 0 0;
 }

@@ -19,3 +19,31 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # ---- canonical URLs (single-origin deploy: both = this service's URL) ----
+      - key: API_URL # public base of this API, e.g. https://api.brivia.club
+        sync: false
+      - key: CLIENT_URL # public base of the SPA, e.g. https://brivia.club
+        sync: false
+      - key: CORS_ORIGINS # comma-separated extra SPA origins (optional)
+        sync: false
+      # ---- uploads (Supabase Storage — REQUIRED or signed uploads 500) ----
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      # ---- transactional email (Gmail SMTP, free). Unset = mails print to logs ----
+      - key: SMTP_USER # the Gmail address
+        sync: false
+      - key: SMTP_PASS # a Gmail App Password (needs 2FA), not the account password
+        sync: false
+      - key: EMAIL_FROM # display name; Gmail pins the address to SMTP_USER
+        sync: false
+      # ---- social sign-in (free); a provider activates when its vars exist ----
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false

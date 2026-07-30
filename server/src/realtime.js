@@ -1,5 +1,6 @@
 import { Server } from 'socket.io'
 import { verifyToken } from './auth.js'
+import { corsOrigin } from './config.js'
 import { db } from './db.js'
 
 /* Socket.IO on the same HTTP server. One room per user id.
@@ -9,7 +10,7 @@ import { db } from './db.js'
 let io = null
 
 export function initRealtime(httpServer) {
-  io = new Server(httpServer, { path: '/socket.io', cors: { origin: true } })
+  io = new Server(httpServer, { path: '/socket.io', cors: { origin: corsOrigin } })
 
   io.use((socket, next) => {
     try {

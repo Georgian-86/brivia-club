@@ -391,10 +391,20 @@ export default function Profile() {
   }
 
   const verify = async (key, label) => {
-    await api(`/users/me/verify/${key}`, { method: 'POST' })
-    const { me: updated } = await api('/auth/me')
-    setMe(updated.me ? updated.me : updated)
-    toast(`${label} verified ✓`, 'shield')
+    try {
+      // email is earned through the real flow — this tile resends the link
+      if (key === 'email') {
+        await api('/auth/resend-verification', { method: 'POST' })
+        toast('Verification email sent — check your inbox', 'shield')
+        return
+      }
+      await api(`/users/me/verify/${key}`, { method: 'POST' })
+      const { me: updated } = await api('/auth/me')
+      setMe(updated.me ? updated.me : updated)
+      toast(`${label} verified ✓`, 'shield')
+    } catch (e) {
+      toast(e.message, 'x')
+    }
   }
 
   return (

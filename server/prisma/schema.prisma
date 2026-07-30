@@ -41,7 +41,7 @@ enum MessageKind {
 model User {
   id              String   @id @default(cuid())
   email           String   @unique
-  password        String
+  password        String? // null = social-only account (set later via password reset)
   role            Role     @default(MEMBER)
   name            String
   handle          String   @unique
@@ -103,6 +103,41 @@ model User {
   teamMemberships  TeamMember[]
   embedding        ProfileEmbedding?
   taste            TasteProfile?
+  authTokens       AuthToken[]
+  oauthAccounts    OAuthAccount[]
+}
+
+// ============================================================
+// Auth — real flows (email verification, password reset, OAuth)
+// ============================================================
+
+// Single-use links: only the sha256 of the token is stored, so a
+// DB leak can't be replayed as a live verification/reset link.
+model AuthToken {
+  id        String    @id @default(cuid())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  kind      String // EMAIL_VERIFY | PASSWORD_RESET
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, kind])
+}
+
+// One row per linked social identity (google | github | apple).
+model OAuthAccount {
+  id                String   @id @default(cuid())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  provider          String
+  providerAccountId String
+  email             String?
+  createdAt         DateTime @default(now())
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 // ============================================================

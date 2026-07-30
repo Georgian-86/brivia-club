@@ -9,11 +9,16 @@ import { io } from 'socket.io-client'
 
 const TOKEN_KEY = 'brivia-token'
 
+// Absolute API origin for split deploys (SPA on Vercel + API on Render).
+// Empty = same-origin: the Vite dev proxy locally, Fastify-served dist in prod.
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
+export const apiUrl = (path) => `${API_BASE}${path}`
+
 export const getToken = () => localStorage.getItem(TOKEN_KEY)
 export const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY))
 
 export async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE}/api${path}`, {
     method,
     headers: {
       ...(body ? { 'content-type': 'application/json' } : {}),
@@ -72,7 +77,7 @@ let socket = null
 export function getSocket() {
   if (!getToken()) return null
   if (!socket) {
-    socket = io('/', { path: '/socket.io', auth: { token: getToken() } })
+    socket = io(API_BASE || '/', { path: '/socket.io', auth: { token: getToken() } })
   }
   return socket
 }
